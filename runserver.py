@@ -20,7 +20,7 @@ from flask_cache_bust import init_cache_busting
 
 from pogom import config
 from pogom.app import Pogom
-from pogom.utils import get_args, get_encryption_lib_path
+from pogom.utils import get_args, get_encryption_lib_path, now
 
 from pogom.search import search_overseer_thread
 from pogom.models import init_database, create_tables, drop_tables, Pokemon, db_updater, clean_db_loop
@@ -58,7 +58,44 @@ if not hasattr(pgoapi, "__version__") or StrictVersion(pgoapi.__version__) < Str
     sys.exit(1)
 
 
+# Patch to make exceptions in threads cause an exception.
+def install_thread_excepthook():
+    """
+    Workaround for sys.excepthook thread bug
+    (https://sourceforge.net/tracker/?func=detail&atid=105470&aid=1230540&group_id=5470).
+    Call once from __main__ before creating any threads.
+    If using psyco, call psycho.cannotcompile(threading.Thread.run)
+    since this replaces a new-style class method.
+    """
+    import sys
+    run_old = Thread.run
+
+    def run(*args, **kwargs):
+        try:
+            run_old(*args, **kwargs)
+        except (KeyboardInterrupt, SystemExit):
+            raise
+        except:
+            sys.excepthook(*sys.exc_info())
+    Thread.run = run
+
+
+# Exception handler will log unhandled exceptions
+def handle_exception(exc_type, exc_value, exc_traceback):
+    if issubclass(exc_type, KeyboardInterrupt):
+        sys.__excepthook__(exc_type, exc_value, exc_traceback)
+        return
+
+    log.error("Uncaught exception", exc_info=(exc_type, exc_value, exc_traceback))
+
+
 def main():
+    # Patch threading to make exceptions catchable
+    install_thread_excepthook()
+
+    # Make sure exceptions get logged
+    sys.excepthook = handle_exception
+
     args = get_args()
 
     # Check for depreciated argumented
@@ -166,6 +203,10 @@ def main():
     # Control the search status (running or not) across threads
     pause_bit = Event()
     pause_bit.clear()
+    if args.on_demand_timeout > 0:
+        pause_bit.set()
+
+    heartbeat = [now()]
 
     # Setup the location tracking queue and push the first location on
     new_location_queue = Queue()
@@ -182,9 +223,10 @@ def main():
         t.start()
 
     # db clearner; really only need one ever
-    t = Thread(target=clean_db_loop, name='db-cleaner', args=(args,))
-    t.daemon = True
-    t.start()
+    if not args.disable_clean:
+        t = Thread(target=clean_db_loop, name='db-cleaner', args=(args,))
+        t.daemon = True
+        t.start()
 
     # WH Updates
     wh_updates_queue = Queue()
@@ -199,18 +241,12 @@ def main():
     if not args.only_server:
 
         # Check all proxies before continue so we know they are good
-        if args.proxy:
+        if args.proxy and not args.proxy_skip_check:
 
             # Overwrite old args.proxy with new working list
             args.proxy = check_proxies(args)
 
         # Gather the pokemons!
-
-        # check the sort of scan
-        if args.spawnpoint_scanning:
-            mode = 'sps'
-        else:
-            mode = 'hex'
 
         # attempt to dump the spawn points (do this before starting threads of endure the woe)
         if args.spawnpoint_scanning and args.spawnpoint_scanning != 'nofile' and args.dump_spawnpoints:
@@ -220,9 +256,9 @@ def main():
                 file.write(json.dumps(spawns))
                 log.info('Finished exporting spawn points')
 
-        argset = (args, mode, new_location_queue, pause_bit, encryption_lib_path, db_updates_queue, wh_updates_queue)
+        argset = (args, new_location_queue, pause_bit, heartbeat, encryption_lib_path, db_updates_queue, wh_updates_queue)
 
-        log.debug('Starting a %s search thread', mode)
+        log.debug('Starting a %s search thread', args.scheduler)
         search_thread = Thread(target=search_overseer_thread, name='search-overseer', args=argset)
         search_thread.daemon = True
         search_thread.start()
@@ -234,6 +270,7 @@ def main():
     init_cache_busting(app)
 
     app.set_search_control(pause_bit)
+    app.set_heartbeat_control(heartbeat)
     app.set_location_queue(new_location_queue)
 
     config['ROOT_PATH'] = app.root_path
