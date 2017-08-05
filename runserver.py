@@ -12,6 +12,8 @@ import json
 from distutils.version import StrictVersion
 
 from threading import Thread, Event
+
+from mrmime import init_mr_mime
 from queue import Queue
 from flask_cors import CORS
 from flask_cache_bust import init_cache_busting
@@ -193,6 +195,12 @@ def main():
     sys.excepthook = handle_exception
 
     args = get_args()
+
+    # Initialize Mr. Mime library
+    init_mr_mime(config_file='config/mrmime_config.json', user_cfg={
+        # We don't want exceptions on captchas because we handle them differently.
+        'exception_on_captcha': False
+    })
 
     # Abort if status name is not valid.
     regexp = re.compile('^([\w\s\-.]+)$')
