@@ -399,6 +399,8 @@ function initSidebar() {
     $('#max-level-gyms-filter-switch').val(Store.get('maxGymLevel'))
     $('#last-update-gyms-switch').val(Store.get('showLastUpdatedGymsOnly'))
     $('#pokemon-switch').prop('checked', Store.get('showPokemon'))
+    $('#pokemon-settings-wrapper').toggle(Store.get('showPokemon'))
+    $('#pokemon-scale-by-rarity-switch').prop('checked', Store.get('scaleByRarity'))
     $('#pokestops-switch').prop('checked', Store.get('showPokestops'))
     $('#lured-pokestops-only-switch').val(Store.get('showLuredPokestopsOnly'))
     $('#lured-pokestops-only-wrapper').toggle(Store.get('showPokestops'))
@@ -2689,6 +2691,26 @@ $(function () {
     $('#pokemon-switch').change(function () {
         buildSwitchChangeListener(mapData, ['pokemons'], 'showPokemon').bind(this)()
         markerCluster.repaint()
+    })
+    $('#pokemon-scale-by-rarity-switch').change(function () {
+        // Change and store the flag
+        Store.set('scaleByRarity', this.checked)
+        // Remove all Pokemon markers from map
+        var oldPokeMarkers = []
+        $.each(mapData['pokemons'], function (key, pkm) {
+            // for any marker you're turning off, you'll want to wipe off the range
+            if (pkm.marker.rangeCircle) {
+                pkm.marker.rangeCircle.setMap(null)
+                delete pkm.marker.rangeCircle
+            }
+            pkm.marker.setMap(null)
+            oldPokeMarkers.push(pkm.marker)
+        })
+        markerCluster.removeMarkers(oldPokeMarkers)
+        mapData['pokemons'] = {}
+        // Reload all Pokemon
+        lastpokemon = false
+        updateMap()
     })
     $('#scanned-switch').change(function () {
         buildSwitchChangeListener(mapData, ['scanned'], 'showScanned').bind(this)()
