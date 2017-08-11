@@ -199,7 +199,8 @@ def main():
     # Initialize Mr. Mime library
     init_mr_mime(config_file='config/mrmime_config.json', user_cfg={
         # We don't want exceptions on captchas because we handle them differently.
-        'exception_on_captcha': False
+        'exception_on_captcha': False,
+        'pgpool_system_id': args.status_name
     })
 
     # Abort if status name is not valid.

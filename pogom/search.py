@@ -32,6 +32,8 @@ from sets import Set
 from threading import Thread, Lock
 
 import requests
+from mrmime import mrmime_pgpool_enabled
+from mrmime.pogoaccount import POGOAccount
 from pgoapi.hash_server import (HashServer)
 from queue import Queue, Empty
 from requests.adapters import HTTPAdapter
@@ -46,7 +48,7 @@ from .models import (parse_map, GymDetails, parse_gyms, MainWorker,
                      WorkerStatus, HashKeys)
 from .proxy import get_new_proxy
 from .transform import get_new_coords
-from .utils import now, clear_dict_response
+from .utils import now, clear_dict_response, get_args
 
 log = logging.getLogger(__name__)
 
@@ -82,7 +84,9 @@ def switch_status_printer(display_type, current_page, mainlog,
         elif command.isdigit():
             current_page[0] = int(command)
             mainlog.handlers[0].setLevel(logging.CRITICAL)
-            display_type[0] = 'workers'
+        elif command.lower() == 'a':
+            mainlog.handlers[0].setLevel(logging.CRITICAL)
+            display_type[0] = 'account_stats'
         elif command.lower() == 'f':
             mainlog.handlers[0].setLevel(logging.CRITICAL)
             display_type[0] = 'failedaccounts'
@@ -92,7 +96,7 @@ def switch_status_printer(display_type, current_page, mainlog,
 
 
 # Thread to print out the status of each worker.
-def status_printer(threadStatus, account_failures, logmode, hash_key,
+def status_printer(threadStatus, account_queue, account_captchas, account_failures, logmode, hash_key,
                    key_scheduler):
 
     if (logmode == 'logs'):
@@ -202,6 +206,13 @@ def status_printer(threadStatus, account_failures, logmode, hash_key,
                         threadStatus[item]['captcha'],
                         threadStatus[item]['message']))
 
+        elif display_type[0] == 'account_stats':
+            total_pages = print_account_stats(status_text, threadStatus,
+                                              account_queue,
+                                              account_captchas,
+                                              account_failures,
+                                              current_page)
+
         elif display_type[0] == 'failedaccounts':
             status_text.append('-----------------------------------------')
             status_text.append('Accounts on hold:')
@@ -249,13 +260,144 @@ def status_printer(threadStatus, account_failures, logmode, hash_key,
         # Print the status_text for the current screen.
         status_text.append((
             'Page {}/{}. Page number to switch pages. F to show on hold ' +
-            'accounts. H to show hash status. <ENTER> alone to switch ' +
+            'accounts. H to show hash status. A to show account stats. <ENTER> alone to switch ' +
             'between status and log view').format(current_page[0],
                                                   total_pages))
         # Clear the screen.
         os.system('cls' if os.name == 'nt' else 'clear')
         # Print status.
         print '\n'.join(status_text)
+
+
+# Print statistics about accounts
+def print_account_stats(rows, thread_status, account_queue,
+                        account_captchas, account_failures,
+                        current_page):
+    rows.append('-----------------------------------------')
+    rows.append('Mr. Mime Account Statistics:')
+    rows.append('-----------------------------------------')
+
+    args = get_args()
+
+    # Collect all accounts.
+    accounts = []
+    for item in thread_status:
+        if thread_status[item]['type'] == 'Worker':
+            worker = thread_status[item]
+            account = worker.get('account', {})
+            accounts.append(('active', account))
+    for account in list(account_queue.queue):
+        accounts.append(('spare', account))
+    for captcha_tuple in list(account_captchas):
+        account = captcha_tuple[1]
+        accounts.append(('captcha', account))
+    for acc_fail in account_failures:
+        account = acc_fail['account']
+        accounts.append(('failed', account))
+
+    # Determine maximum username length.
+    userlen = 4
+    for status, acc in accounts:
+        userlen = max(userlen, len(acc.get('username', '')))
+
+    # Print table header.
+    row_tmpl = '{:7} | {:' + str(userlen) + '} | {:4} | {:11} | {:3} | {:>8} | {:10} | {:6}' \
+                                            ' | {:8} | {:9} | {:5} | {:>10}'
+    rows.append(row_tmpl.format('Status', 'User', 'Warn', 'Blind', 'Lvl', 'XP', 'Encounters',
+                                'Throws', 'Captures', 'Inventory', 'Spins',
+                                'Walked'))
+
+    # Pagination.
+    start_line, end_line, total_pages = calc_pagination(len(accounts), 6,
+                                                        current_page)
+
+    # Print account statistics.
+    current_line = 0
+    for status, account in accounts:
+        # Skip over items that don't belong on this page.
+        current_line += 1
+        if current_line < start_line:
+            continue
+        if current_line > end_line:
+            break
+
+        # Access to the underlying POGOAccount
+        pgacc = account.get('pgacc')
+
+        # Format walked km
+        km_walked_f = pgacc.get_stats('km_walked', 'none') if pgacc else 'none'
+        if km_walked_f != 'none':
+            km_walked_str = '{:.1f} km'.format(km_walked_f)
+        else:
+            km_walked_str = ""
+
+        # Inventory
+        inv_str = ''
+        if pgacc and pgacc.inventory:
+            balls = pgacc.inventory_balls
+            total = pgacc.inventory_total
+            inv_str = '{}B/{}T'.format(balls, total)
+
+        warning = pgacc.is_warned() if pgacc else None
+        warning = '' if warning is None else ('Yes' if warning else 'No')
+
+        rareless_scans = pgacc.rareless_scans if pgacc else None
+        maybe_threshold = int(round(args.rareless_scans_threshold / 2))
+        if rareless_scans is None:
+            blind = ''
+        elif rareless_scans in range(0, maybe_threshold):
+            blind = 'No'
+        elif rareless_scans in range(maybe_threshold, args.rareless_scans_threshold):
+            blind = 'Maybe'
+        else:
+            blind = 'Yes'
+        if blind:
+            if rareless_scans >= args.rareless_scans_threshold:
+                scans = '{}+'.format(args.rareless_scans_threshold)
+            else:
+                scans = rareless_scans
+            blind = '{} ({})'.format(blind, scans)
+
+        rows.append(row_tmpl.format(
+            status,
+            account.get('username', ''),
+            warning,
+            blind,
+            pgacc.get_stats('level', '') if pgacc else '',
+            pgacc.get_stats('experience', '') if pgacc else '',
+            pgacc.get_stats('pokemons_encountered', '') if pgacc else '',
+            pgacc.get_stats('pokeballs_thrown', '') if pgacc else '',
+            pgacc.get_stats('pokemons_captured', '') if pgacc else '',
+            inv_str,
+            pgacc.get_stats('poke_stop_visits', '') if pgacc else '',
+            km_walked_str))
+
+    return total_pages
+
+
+# Helper function to calculate start and end line for paginated output
+def calc_pagination(total_rows, non_data_rows, current_page):
+    width, height = terminalsize.get_terminal_size()
+    # Title and table header is not usable space
+    usable_height = height - non_data_rows
+    # Prevent people running terminals only 6 lines high from getting a
+    # divide by zero.
+    if usable_height < 1:
+        usable_height = 1
+
+    total_pages = math.ceil(total_rows / float(usable_height))
+
+    # Prevent moving outside the valid range of pages.
+    if current_page[0] > total_pages:
+        current_page[0] = total_pages
+    if current_page[0] < 1:
+        current_page[0] = 1
+
+    # Calculate which lines to print (1-based).
+    start_line = usable_height * (current_page[0] - 1) + 1
+    end_line = start_line + usable_height - 1
+
+    return start_line, end_line, total_pages
 
 
 # The account recycler monitors failed accounts and places them back in the
@@ -387,7 +529,7 @@ def search_overseer_thread(args, new_location_queue, control_flags, heartb,
         t = Thread(
             target=status_printer,
             name='status_printer',
-            args=(threadStatus, account_failures, args.print_status,
+            args=(threadStatus, account_queue, account_captchas, account_failures, args.print_status,
                   args.hash_key, key_scheduler))
         t.daemon = True
         t.start()
@@ -790,13 +932,12 @@ def search_worker_thread(args, account_queue, account_sets,
             log.info(status['message'])
 
             # New lease of life right here.
+            status['account'] = account
             status['fail'] = 0
             status['success'] = 0
             status['noitems'] = 0
             status['skip'] = 0
             status['captcha'] = 0
-
-            #stagger_thread(args)
 
             # Sleep when consecutive_fails reaches max_failures, overall fails
             # for stat purposes.
@@ -875,6 +1016,20 @@ def search_worker_thread(args, account_queue, account_sets,
                                                  'last_fail_time': now(),
                                                  'reason': 'rest interval'})
                         break
+
+                # Let account rest if it got blind (although resting won't heal it unfortunately.)
+                if args.rotate_blind and pgacc.rareless_scans >= args.rareless_scans_threshold:
+                    pgacc.shadowbanned = True
+                    status['message'] = (
+                        'Account {} has become blind. Rotating out.'.format(
+                            account['username']))
+                    log.info(status['message'])
+                    account_failures.append({
+                        'account': account,
+                        'last_fail_time': now(),
+                        'reason': 'Got shadowbanned.'
+                    })
+                    break
 
                 # Grab the next thing to search (when available).
                 step, step_location, appears, leaves, messages, wait = (
@@ -1139,6 +1294,13 @@ def search_worker_thread(args, account_queue, account_sets,
                 log.debug(status['message'])
                 time.sleep(delay)
 
+            # Account got rotated out, force one last PGPool update
+            if mrmime_pgpool_enabled():
+                pgacc.update_pgpool()
+            del account['pgacc']
+            del pgacc
+
+
         # Catch any process exceptions, log them, and continue the thread.
         except Exception as e:
             log.error((
@@ -1201,15 +1363,6 @@ def calc_distance(pos1, pos2):
     d = R * c
 
     return d
-
-
-# Delay each thread start time so that logins occur after delay.
-def stagger_thread(args):
-    loginDelayLock.acquire()
-    delay = args.login_delay + ((random.random() - .5) / 2)
-    log.debug('Delaying thread startup for %.2f seconds', delay)
-    time.sleep(delay)
-    loginDelayLock.release()
 
 
 # The delta from last stat to current stat

@@ -151,6 +151,8 @@ def clear_inventory(pgacc):
     release_count = int(total_pokemon - 5)
     if total_pokemon > random.randint(5, 10):
         release_ids = random.sample(pgacc.pokemon.keys(), release_count)
+        if pgacc.get_state('buddy') in release_ids:
+            release_ids.remove(pgacc.get_state('buddy'))
         # Don't let Niantic throttle.
         time.sleep(random.uniform(2, 4))
         release_p_response = request_release_pokemon(pgacc, 0,
@@ -287,30 +289,6 @@ def parse_level_up_rewards(pgacc):
                       pgacc.username)
     except Exception as e:
         log.exception('Error during getting Level Up Rewards %s.', e)
-
-
-def send_generic_request(req, account, settings=False, buddy=True, inbox=True):
-    req.check_challenge()
-    req.get_hatched_eggs()
-    req.get_inventory(last_timestamp_ms=account['last_timestamp_ms'])
-    req.check_awarded_badges()
-
-    if settings:
-        if 'remote_config' in account:
-            req.download_settings(hash=account['remote_config']['hash'])
-        else:
-            req.download_settings()
-    if buddy:
-        req.get_buddy_walked()
-    if inbox:
-        req.get_inbox(is_history=True)
-    resp = req.call(False)
-    parse_inventory(account, resp)
-    parse_new_timestamp_ms(account, resp)
-    if settings:
-        parse_download_settings(account, resp)
-    clear_dict_response(resp)
-    return resp
 
 
 # The AccountSet returns a scheduler that cycles through different

@@ -489,6 +489,14 @@ def get_args():
     parser.add_argument('--log-path',
                         help=('Defines directory to save log files to.'),
                         default='logs/')
+    parser.add_argument('-rst', '--rareless-scans-threshold',
+                        help=('Mark an account as blind/shadowbanned after '
+                              'this many scans without finding any rare '
+                              'Pokemon.'),
+                        type=int, default=10)
+    parser.add_argument('-rb', '--rotate-blind',
+                        help='Rotate out blinded accounts.',
+                        action='store_true', default=False)
     parser.set_defaults(DEBUG=False)
 
     args = parser.parse_args()
