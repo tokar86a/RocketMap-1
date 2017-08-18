@@ -2348,7 +2348,7 @@ def encounter_pokemon(args, pokemon, account, pgacc, account_sets, status,
     try:
         hlvl_pgacc = None
         pokemon_id = pokemon.pokemon_data.pokemon_id
-        scan_location = [pokemon.latitude, pokemon.longitude]
+        scan_location = [pokemon.latitude, pokemon.longitude, pgacc.altitude]
         # If the host has L30s in the regular account pool, we
         # can just use the current account.
         if pgacc.get_stats('level') >= 30:

@@ -104,6 +104,8 @@ def spin_pokestop(pgacc, account, args, fort, step_location):
     if random.random() > 0.5 or pgacc.get_stats('level', 1):
         time.sleep(random.uniform(0.8, 1.8))
         response = spin_pokestop_request(pgacc, fort, step_location)
+        if not response:
+            return False
         time.sleep(random.uniform(2, 4))  # Don't let Niantic throttle.
 
         # Check for reCaptcha.
@@ -187,6 +189,9 @@ def clear_inventory(pgacc):
                 log.info('Account encountered a reCaptcha.')
                 return False
 
+            if not clear_inventory_response:
+                continue
+
             clear_response = clear_inventory_response['RECYCLE_INVENTORY_ITEM']
             clear_result = clear_response.result
             if clear_result is 1:
@@ -212,15 +217,16 @@ def incubate_eggs(pgacc):
 
     pgacc.eggs = sorted(pgacc.eggs, key=lambda k: k['km_target'])
     for incubator in pgacc.incubators:
-        egg = pgacc.eggs.pop(0)
-        time.sleep(random.uniform(2.0, 4.0))
-        if request_use_item_egg_incubator(
-           pgacc, incubator['id'], egg['id']):
-            log.info('Egg #%s (%.0f km) is on incubator #%s.',
-                     egg['id'], egg['km_target'], incubator['id'])
-            pgacc.incubators.remove(incubator)
-        else:
-            log.warning('Failed to put egg on incubator #%s.', incubator['id'])
+        if pgacc.eggs:
+            egg = pgacc.eggs.pop(0)
+            time.sleep(random.uniform(2.0, 4.0))
+            if request_use_item_egg_incubator(
+               pgacc, incubator['id'], egg['id']):
+                log.info('Egg #%s (%.0f km) is on incubator #%s.',
+                         egg['id'], egg['km_target'], incubator['id'])
+                pgacc.incubators.remove(incubator)
+            else:
+                log.warning('Failed to put egg on incubator #%s.', incubator['id'])
 
     return
 
