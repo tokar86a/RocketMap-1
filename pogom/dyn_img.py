@@ -281,7 +281,7 @@ def default_gym_image(team, level, raidlevel, pkm):
 
 def run_imagemagick(source, im_lines, out_filename):
     if not os.path.isfile(out_filename):
-        cmd = 'magick convert "{}" {} "{}"'.format(source, join(im_lines), out_filename)
+        cmd = 'convert "{}" {} "{}"'.format(source, join(im_lines), out_filename)
         if os.name != 'nt':
             cmd = cmd.replace(" ( ", " \( ").replace(" ) ", " \) ")
         log.info("Executing ImageMagick: {}".format(cmd))
