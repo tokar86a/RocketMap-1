@@ -23,7 +23,7 @@ def pgscout_encounter(p, forced=False):
     params = {
         'pokemon_id': p.pokemon_id,
         'encounter_id': p.encounter_id,
-        'spawn_point_id': p.spawnpoint_id,
+        'spawn_point_id': format(p.spawnpoint_id, 'x'),
         'latitude': p.latitude,
         'longitude': p.longitude,
         'weather': p.weather_boosted_condition
