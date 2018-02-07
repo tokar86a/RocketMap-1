@@ -21,6 +21,7 @@ var $selectLuredPokestopsOnly
 var $selectSearchIconMarker
 var $selectLocationIconMarker
 var $switchGymSidebar
+//var excludedRarity
 
 const language = document.documentElement.lang === '' ? 'en' : document.documentElement.lang
 var idToPokemon = {}
@@ -1485,7 +1486,7 @@ function clearStaleMarkers() {
         const isPokeExpired = mapData.pokemons[key]['disappear_time'] < Date.now()
         const isPokeExcluded = getExcludedPokemon().indexOf(mapData.pokemons[key]['pokemon_id']) !== -1
         const pokemonRarity = getPokemonRarity(pokemon['pokemon_id']).toLowerCase()
-        const isRarityExcluded = excludedRarity.indexOf(pokemonRarity) !== -1
+        //const isRarityExcluded = excludedRarity.indexOf(pokemonRarity) !== -1
 
         if (isPokeExpired || isPokeExcluded) {
             const oldMarker = mapData.pokemons[key].marker
@@ -1739,7 +1740,7 @@ function processPokemon(item) {
     const isPokeAlive = item['disappear_time'] > Date.now()
 
     const pokemonRarity = getPokemonRarity(item['pokemon_id'])
-    const isRarityExcluded = excludedRarity.indexOf(pokemonRarity) !== -1
+    //const isRarityExcluded = excludedRarity.indexOf(pokemonRarity) !== -1
     var oldMarker = null
     var newMarker = null
 
