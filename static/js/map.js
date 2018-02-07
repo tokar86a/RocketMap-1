@@ -1485,7 +1485,7 @@ function clearStaleMarkers() {
     $.each(mapData.pokemons, function (key, value) {
         const isPokeExpired = mapData.pokemons[key]['disappear_time'] < Date.now()
         const isPokeExcluded = getExcludedPokemon().indexOf(mapData.pokemons[key]['pokemon_id']) !== -1
-        const pokemonRarity = getPokemonRarity(pokemon['pokemon_id']).toLowerCase()
+        const pokemonRarity = getPokemonRarity(mapData.pokemons[key]['pokemon_id']).toLowerCase()
         //const isRarityExcluded = excludedRarity.indexOf(pokemonRarity) !== -1
 
         if (isPokeExpired || isPokeExcluded) {
