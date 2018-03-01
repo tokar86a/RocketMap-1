@@ -1685,6 +1685,7 @@ function showInBoundsMarkers(markers, type) {
 }
 
 function loadRawData() {
+    var userAuthCode = localStorage.getItem("userAuthCode");
     var loadPokemon = Store.get('showPokemon')
     var loadGyms = (Store.get('showGyms') || Store.get('showRaids'))
     var loadPokestops = Store.get('showPokestops')
@@ -1707,6 +1708,7 @@ function loadRawData() {
         url: 'raw_data',
         type: 'GET',
         data: {
+            'userAuthCode': userAuthCode,
             'timestamp': timestamp,
             'pokemon': loadPokemon,
             'lastpokemon': lastpokemon,
@@ -1762,6 +1764,11 @@ function loadRawData() {
                 'showMethod': 'fadeIn',
                 'hideMethod': 'fadeOut'
             }
+        },
+        success: function(data) {
+          if (data.auth_redirect) {
+            window.location = data.auth_redirect;
+          }
         },
         complete: function () {
             rawDataIsLoading = false
@@ -3009,7 +3016,6 @@ $(function () {
 
         // recall saved lists
         $selectExclude.val(Store.get('remember_select_exclude')).trigger('change')
-		$selectExcludeRarity.val(Store.get('excludedRarity')).trigger('change')
         $selectPokemonNotify.val(Store.get('remember_select_notify')).trigger('change')
         $selectRarityNotify.val(Store.get('remember_select_rarity_notify')).trigger('change')
         $textPerfectionNotify.val(Store.get('remember_text_perfection_notify')).trigger('change')
@@ -3018,6 +3024,7 @@ $(function () {
         if (isTouchDevice() && isMobileDevice()) {
             $('.select2-search input').prop('readonly', true)
         }
+        $selectExcludeRarity.val(Store.get('excludedRarity')).trigger('change')
     })
 
     // run interval timers to regularly update map and timediffs

@@ -502,7 +502,7 @@ def get_args():
                         help=('Enables the use of X-FORWARDED-FOR headers ' +
                               'to identify the IP of clients connecting ' +
                               'through these trusted proxies.'))
-    parser.add_argument('--api-version', default='0.89.1',
+    parser.add_argument('--api-version', default='0.91.1',
                         help=('API version currently in use.'))
     parser.add_argument('--no-file-logs',
                         help=('Disable logging to files. ' +
@@ -548,8 +548,26 @@ def get_args():
                         action='store_true', default=False)
     parser.add_argument('-pgsu', '--pgscout-url', default=None,
                         help='URL to query PGScout for Pokemon IV/CP.')
+    parser.add_argument('-lurl', '--lure-url', default=None,
+                        help='URL to query lure.')
     parser.add_argument('-pa', '--pogo-assets', default=None,
                         help='Directory pointing to optional PogoAssets root directory.')
+    parser.add_argument('-uas', '--user-auth-service', default=None,
+                        help='Force end users to auth to an external service.')
+    parser.add_argument('-uascid', '--uas-client-id', default=None,
+                        help='Client ID for user external authentication.')
+    parser.add_argument('-uascs', '--uas-client-secret', default=None,
+                        help='Client Secret for user external authentication.')
+    parser.add_argument('-uasho', '--uas-host-override', default=None,
+                        help='Host override for user external authentication.')
+    parser.add_argument('-uasdrg', '--uas-discord-required-guilds', default=None,
+                        help='Required Discord Guild(s) for user external authentication.')
+    parser.add_argument('-uasdgi', '--uas-discord-guild-invite', default=None,
+                        help='Link for users not in required guild.')
+    parser.add_argument('-uasdrr', '--uas-discord-required-roles', default=None,
+                        help='Required Discord Guild Role(s) for user external authentication.')
+    parser.add_argument('-uasdbt', '--uas-discord-bot-token', default=None,
+                        help='Discord Bot Token for user external authentication.')
     rarity = parser.add_argument_group('Dynamic Rarity')
     rarity.add_argument('-Rh', '--rarity-hours',
                         help=('Number of hours of Pokemon data to use' +

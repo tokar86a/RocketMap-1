@@ -13,7 +13,7 @@ from flask import Flask, abort, jsonify, render_template, request, \
 from flask.json import JSONEncoder
 from flask_compress import Compress
 from pogom.dyn_img import get_gym_icon, get_pokemon_map_icon, get_pokemon_raw_icon
-from pogom.pgscout import scout_error, pgscout_encounter
+from pogom.pgscout import scout_error, pgscout_encounter, perform_lure
 
 
 from pogom.weather import get_weather_cells, get_s2_coverage, get_weather_alerts
@@ -22,6 +22,7 @@ from .models import (Pokemon, Gym, Pokestop, ScannedLocation,
                      SpawnPoint)
 from .utils import (get_args, get_pokemon_name, get_pokemon_types,
                     now, dottedQuadToNum)
+from .client_auth import check_auth
 from .transform import transform_from_wgs_to_gcj
 from .blacklist import fingerprints, get_ip_blacklist
 
@@ -72,9 +73,12 @@ class Pogom(Flask):
             self.blacklist = []
             self.blacklist_keys = []
 
+        self.user_auth_code_cache = {}
+
         # Routes
         self.json_encoder = CustomJSONEncoder
         self.route("/", methods=['GET'])(self.fullmap)
+        self.route("/auth_callback", methods=['GET'])(self.auth_callback)
         self.route("/raw_data", methods=['GET'])(self.raw_data)
         self.route("/loc", methods=['GET'])(self.loc)
         self.route("/next_loc", methods=['POST'])(self.next_loc)
@@ -96,6 +100,7 @@ class Pogom(Flask):
         self.route("/gym_img", methods=['GET'])(self.gym_img)
         self.route("/pkm_img", methods=['GET'])(self.pokemon_img)
         self.route("/scout", methods=['GET'])(self.scout_pokemon)
+        self.route("/lure", methods=['GET'])(self.scout_lure)
         self.route("/<statusname>", methods=['GET'])(self.fullmap)
 
     def gym_img(self):
@@ -146,6 +151,36 @@ class Pogom(Flask):
                                                                    'error']))
         else:
             scout_result = scout_error("PGScout URL not configured.")
+        return jsonify(scout_result)
+
+    def scout_lure(self):
+        args = get_args()
+        if args.lure_url:
+            lat = request.args.get('latitude')
+            lng = request.args.get('longitude')
+            log.info(
+            u"On demand luring a stop at lat = {}, long = {}.".format(lat,
+                                              lng))
+            stops = Pokestop.get_stop_by_cord(lat, lng)
+            if len(stops) > 1:
+                log.info("Error, more than one stop returned")
+                return None
+            else:
+                p = stops[0]
+            log.info(
+                u"On demand luring a stop {} at {}, {}.".format(p["pokestop_id"],
+                                                              p["latitude"],
+                                                              p["longitude"]))
+            scout_result = perform_lure(p)
+            if scout_result['success']:
+                log.info(
+                    u"Successfully lured pokestop_id {} at {}, {}".format(
+                        p["pokestop_id"], p["latitude"],
+                        p["longitude"]))
+            else:
+                log.warning(u"Failed luring {} at {},{}".format(p["pokestop_id"], p["latitude"], p["longitude"]))
+        else:
+            scout_result = scout_error("URL not configured.")
         return jsonify(scout_result)
 
     def update_scouted_pokemon(self, p, response):
@@ -277,6 +312,10 @@ class Pogom(Flask):
             return jsonify({'message': 'invalid use of api'})
         return self.get_search_control()
 
+    def auth_callback(self, statusname=None):
+        return render_template('auth_callback.html')
+
+
     def fullmap(self, statusname=None):
         self.heartbeat[0] = now()
         args = get_args()
@@ -340,6 +379,9 @@ class Pogom(Flask):
             self.control_flags['on_demand'].clear()
         d = {}
 
+        auth_redirect = check_auth(args, request, self.user_auth_code_cache)
+        if (auth_redirect):
+          return auth_redirect
         # Request time of this request.
         d['timestamp'] = datetime.utcnow()
 
